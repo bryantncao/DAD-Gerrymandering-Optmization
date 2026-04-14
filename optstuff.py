@@ -3,6 +3,10 @@ import networkx as nx
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pickle
+import gurobipy as gp
+from gurobipy import GRB
+
+
 
 # --------------------------------------------------
 # 1. Load saved files
@@ -45,4 +49,34 @@ tol = 0.1
 L = (1 - tol) * target_pop
 U = (1 + tol) * target_pop
 
-print(L,U)
+# --------------------------------------------------
+# 3. Build basic assignment model
+# --------------------------------------------------
+m = gp.Model("districting_basic")
+
+# x[i,k] = 1 if precinct i assigned to district k
+x = m.addVars(precincts, K, vtype=GRB.BINARY, name="x")
+
+# each precinct assigned to exactly one district
+m.addConstrs(
+    (gp.quicksum(x[i, k] for k in K) == 1 for i in precincts),
+    name="assign"
+)
+
+# population lower bound
+m.addConstrs(
+    (gp.quicksum(pop[i] * x[i, k] for i in precincts) >= L for k in K),
+    name="pop_lb"
+)
+
+# population upper bound
+m.addConstrs(
+    (gp.quicksum(pop[i] * x[i, k] for i in precincts) <= U for k in K),
+    name="pop_ub"
+)
+
+# objective: feasibility only
+m.setObjective(0, GRB.MINIMIZE)
+
+# solve
+m.optimize()
