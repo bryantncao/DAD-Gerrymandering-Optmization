@@ -1,0 +1,210 @@
+import geopandas as gpd
+import networkx as nx
+import pandas as pd
+import matplotlib.pyplot as plt
+import pickle
+import os
+
+print("runnnnnnnnning")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Define data (input) and outputs folders
+DATA_DIR = os.path.join(BASE_DIR, "data")
+OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
+
+# Create the outputs folder automatically if it doesn't exist
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# =====================================================================
+# 1. READ FLORIDA PRECINCT SHAPEFILE     # CHANGED: new source
+# =====================================================================
+print("1. Loading Precinct Shapefile...")
+shapefile_path = os.path.join(DATA_DIR, "fl_2024.shp")            # CHANGED
+gdf = gpd.read_file(shapefile_path)
+
+# CHANGED: new shapefile has no UNIQUE_ID column. Build one that's
+# guaranteed unique. PCT_STD has ~116 duplicates across 5,829 rows,
+# so we append the row index, same trick your newnevada.py uses.
+gdf = gdf.reset_index(drop=True)                                  # CHANGED
+gdf["UNIQUE_ID"] = (                                              # CHANGED
+    gdf["COUNTY"].astype(str).str.strip() + "_" +
+    gdf["PRECINCT"].astype(str).str.strip() + "_" +
+    gdf.index.astype(str)
+)
+
+# =====================================================================
+# 2. CREATE VOTE COLUMNS                 # CHANGED: new candidate list
+# =====================================================================
+print("2. Calculating Voting Totals...")
+gdf["dem_votes"] = gdf["G24PREDHAR"]     # unchanged
+gdf["rep_votes"] = gdf["G24PRERTRU"]     # unchanged
+
+# CHANGED: new file drops PCRU (Cruz), adds SDEL (De La Cruz) and
+# OWRI (write-ins). Pulled from the 2024 docs you uploaded.
+gdf["other_votes"] = (                                            # CHANGED
+    gdf["G24PRELOLI"] +
+    gdf["G24PREGSTE"] +
+    gdf["G24PRESDEL"] +
+    gdf["G24PREASON"] +
+    gdf["G24PRECTER"] +
+    gdf["G24PREOWRI"]
+)
+
+gdf["two_party_votes"] = gdf["dem_votes"] + gdf["rep_votes"]
+gdf["total_votes_all"] = gdf["dem_votes"] + gdf["rep_votes"] + gdf["other_votes"]
+
+# =====================================================================
+# 3. CENSUS AREA-WEIGHTED POPULATION INTERPOLATION    # CHANGED: TIGER source
+# =====================================================================
+print("3. Loading Census TIGER Block Data & Performing Spatial Interpolation (This may take a minute)...")
+# CHANGED: switched from RDH's fl_pl2020_p1_b.shp to Census Bureau's
+# TIGER/Line 2020 tabblock file. TIGER already bakes POP20 into the DBF,
+# so no separate PL 94-171 table merge is needed. Total pops to
+# 21,538,187, matching the official 2020 FL census count exactly.
+census_path = os.path.join(DATA_DIR, "tl_2020_12_tabblock20.shp")        # CHANGED
+census_gdf = gpd.read_file(census_path)
+
+# CHANGED: the population column is POP20 in TIGER, not P0010001.
+census_gdf = census_gdf[['GEOID20', 'POP20', 'geometry']].copy()         # CHANGED
+census_gdf = census_gdf.rename(columns={'POP20': 'block_pop'})           # CHANGED
+
+# EPSG:3086 is Florida Albers (meters). New file comes in as EPSG:4269;
+# to_crs handles the conversion transparently.
+gdf_proj = gdf.to_crs(epsg=3086)
+census_gdf_proj = census_gdf.to_crs(epsg=3086)
+
+census_gdf_proj['orig_area'] = census_gdf_proj.geometry.area
+
+intersections = gpd.overlay(
+    census_gdf_proj,
+    gdf_proj[['UNIQUE_ID', 'geometry']],
+    how='intersection'
+)
+
+intersections['intersect_area'] = intersections.geometry.area
+intersections['area_weight'] = intersections['intersect_area'] / intersections['orig_area']
+intersections['apportioned_pop'] = intersections['block_pop'] * intersections['area_weight']
+
+precinct_pop = intersections.groupby('UNIQUE_ID')['apportioned_pop'].sum().reset_index()
+precinct_pop['apportioned_pop'] = precinct_pop['apportioned_pop'].round().astype(int)
+
+gdf = gdf.merge(precinct_pop, on='UNIQUE_ID', how='left')
+gdf = gdf.rename(columns={'apportioned_pop': 'population'})
+gdf['population'] = gdf['population'].fillna(0).astype(int)
+
+# =====================================================================
+# 4. FILTER COLUMNS                      # CHANGED: new identifier fields
+# =====================================================================
+print("4. Filtering Dataset...")
+gdf_small = gdf[
+    [
+        "UNIQUE_ID",
+        "COUNTY",              # CHANGED: was COUNTYFP + CNTY_NAME
+        "PRECINCT",            # CHANGED: was PREC_ID
+        "PCT_STD",             # CHANGED: extra — the state-standard precinct code
+        "dem_votes",
+        "rep_votes",
+        "other_votes",
+        "two_party_votes",
+        "total_votes_all",
+        "population",
+        "geometry",
+    ]
+].copy()
+
+# =====================================================================
+# 5. BUILD ADJACENCY PAIRS               (unchanged)
+# =====================================================================
+print("5. Finding Neighboring Precincts...")
+adj_df = gdf_small[["UNIQUE_ID", "geometry"]].copy()
+
+adj = gpd.sjoin(
+    adj_df,
+    adj_df,
+    how="inner",
+    predicate="intersects"
+)
+adj = adj[adj["UNIQUE_ID_left"] != adj["UNIQUE_ID_right"]]
+
+# =====================================================================
+# 6. BUILD STATEWIDE GRAPH               (unchanged)
+# =====================================================================
+print("6. Building Adjacency Graph...")
+G = nx.Graph()
+
+for uid in gdf_small["UNIQUE_ID"]:
+    G.add_node(uid)
+
+for _, row in adj.iterrows():
+    G.add_edge(row["UNIQUE_ID_left"], row["UNIQUE_ID_right"])
+
+components = list(nx.connected_components(G))
+print(f"   -> Initial connected components: {len(components)}")
+
+# =====================================================================
+# 7. CONNECT ISOLATED COMPONENTS         (unchanged)
+# =====================================================================
+print("7. Fixing Isolated Precincts...")
+gdf_proj = gdf_small.to_crs(epsg=3086)
+gdf_proj["centroid"] = gdf_proj.geometry.centroid
+centroid_map = dict(zip(gdf_proj["UNIQUE_ID"], gdf_proj["centroid"]))
+
+main_component = max(components, key=len)
+main_nodes = list(main_component)
+
+for comp in components:
+    if comp == main_component:
+        continue
+    best_u, best_v = None, None
+    best_dist = float("inf")
+    for u in comp:
+        cu = centroid_map[u]
+        for v in main_nodes:
+            cv = centroid_map[v]
+            dx, dy = cu.x - cv.x, cu.y - cv.y
+            dist = dx * dx + dy * dy
+            if dist < best_dist:
+                best_dist, best_u, best_v = dist, u, v
+    G.add_edge(best_u, best_v)
+
+components = list(nx.connected_components(G))
+print(f"   -> Final connected components: {len(components)} (Should be 1)")
+
+component_map = {}
+for comp_id, comp in enumerate(components):
+    for uid in comp:
+        component_map[uid] = comp_id
+gdf_small["component"] = gdf_small["UNIQUE_ID"].map(component_map)
+
+# =====================================================================
+# 8. SAVE PROCESSED OUTPUTS              (unchanged)
+# =====================================================================
+print("8. Saving Data to 'outputs' folder...")
+gdf_small.to_pickle(os.path.join(OUTPUT_DIR, "fl_precincts_processed.pkl"))
+gdf_small.to_file(os.path.join(OUTPUT_DIR, "fl_precincts_processed.geojson"), driver="GeoJSON")
+
+edge_list = pd.DataFrame(G.edges(), columns=["u", "v"])
+edge_list.to_csv(os.path.join(OUTPUT_DIR, "fl_graph_edges.csv"), index=False)
+
+with open(os.path.join(OUTPUT_DIR, "fl_graph.pkl"), "wb") as f:
+    pickle.dump(G, f)
+
+neighbors = {node: list(G.neighbors(node)) for node in G.nodes()}
+with open(os.path.join(OUTPUT_DIR, "fl_neighbors.pkl"), "wb") as f:
+    pickle.dump(neighbors, f)
+
+print("\n✅ Processing Complete! Your outputs are ready for optimization.")
+
+# =====================================================================
+# 9. OPTIONAL: PLOT MAP                  (unchanged)
+# =====================================================================
+fig, ax = plt.subplots(figsize=(10, 10))
+gdf_small.plot(
+    column="component",
+    categorical=True,
+    legend=False,
+    ax=ax
+)
+ax.set_title("Florida Precinct Graph Components")
+ax.set_axis_off()
+plt.show()
