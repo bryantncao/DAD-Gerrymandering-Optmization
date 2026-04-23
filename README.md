@@ -2,7 +2,7 @@
 
 Coursework project for Decision Analytics Design. The overall goal is to draw congressional districts by solving a mixed-integer program that takes real precinct geometries, population counts, and vote totals as input, and produces a districting plan that maximizes some political objective (seat count or efficiency gap) while enforcing population balance and contiguity.
 
-The project evolved in two phases. The first phase built a working formulation on Nevada, a small state with 4 congressional districts and about 1,900 precincts — tractable as a direct MIP. The second phase tried to apply the same approach to Florida, discovered it didn't scale, and rebuilt the pipeline around super-precinct aggregation and column generation. The scripts in this top-level folder document both phases. The working Florida pipeline lives in the `FLORIDA-ADVANCED_GERRYMANDING/` subfolder, which has its own dedicated README.
+The project covers two states. Nevada is the small proof-of-concept — 4 congressional districts and about 1,900 precincts, tractable as a direct MIP. Florida is the main focus, and comes in two versions. The scripts in this top-level folder are the **main Florida implementation**, using a direct Hess + SHIR MIP formulation on the raw precinct data. The `FLORIDA-ADVANCED-GERRYMANDERING/` subfolder is an **improved version** that scales better, using precinct aggregation and column generation, and also swaps in cleaner data sources. Both are kept in the repo so the two approaches can be compared; which one you should read depends on what you're trying to do.
 
 ---
 
@@ -18,8 +18,10 @@ project_root/
 ├── florida_optimization_too_big_didn_t_work.py
 ├── sanitychecker.py
 ├── plotter.py
-├── FLORIDA-ADVANCED_GERRYMANDING/   ← scaled Florida pipeline, own README
-└── README.md                        ← this file
+├── resources/                         ← supplementary redistricting references
+├── FLORIDA-ADVANCED-GERRYMANDERING/   ← improved Florida pipeline, own README
+├── README_FLORIDA-REDISTRCTING-ADVANCED.md
+└── README.md                          ← this file
 ```
 
 ---
@@ -48,21 +50,25 @@ m = gp.Model("model_name", env=env)
 
 ## Data Sources
 
+The project pulls from different sources depending on which scripts you're running. Each of the three sections below corresponds to a distinct group of scripts.
+
 ### Nevada
 
-All Nevada scripts read from a VEST 2020 Nevada precinct shapefile (`nv_2020.shp`). VEST's 2016–2020 datasets are free under CC BY-NC-ND 4.0 and available from UF's election lab : [https://election.lab.ufl.edu/data-archive/](https://election.lab.ufl.edu/data-archive/) . Search for "Nevada 2020" and download the shapefile bundle.
+All Nevada scripts read from a VEST 2020 Nevada precinct shapefile (`nv_2020.shp`). VEST's 2016–2020 datasets are free under CC BY-NC-ND 4.0 and available from UF's election lab: [https://election.lab.ufl.edu/data-archive/](https://election.lab.ufl.edu/data-archive/). Search for "Nevada 2020" and download the shapefile bundle.
+
+### Florida (top-level scripts)
+
+The top-level Florida scripts (`florida_dataframe_generator.py`, `florida_optimization_too_big_didn_t_work.py`, `original_optimization_feasibility_check.py`, and the two utilities) read from a VEST 2024 Florida shapefile (`fl_2024_gen_all_prec.shp`) redistributed through the Redistricting Data Hub: [https://redistrictingdatahub.org/](https://redistrictingdatahub.org/). Create a free account, search the Florida 2024 general election precinct results, and download the zip.
 
 ### Florida-ADVANCED-GERRYMANDERING
 
-The scripts in the ADVANCED Gerrymandering folder use the VEST 2024 Florida shapefile (`fl_2024_gen_all_prec.shp`), available through UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/). The advanced subfolder uses a cleaner version of the same data — see the subfolder's README for details.
+The scripts in the ADVANCED-GERRYMANDERING folder use the VEST 2024 Florida shapefile (`fl_2024_gen_all_prec.shp`), available through UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/). The advanced subfolder uses a cleaner version of the same data — see the subfolder's README for details.
 
-## Florida
-
-uses data from [https://redistrictingdatahub.org/](https://redistrictingdatahub.org/)
+The advanced pipeline also requires 2020 census block population data from the US Census Bureau's TIGER/Line shapefiles. Instructions for downloading that are in the advanced folder's README.
 
 ### Hardcoded paths
 
-Every script at this level points to absolute Windows paths like `r"C:\Users\benne\Downloads\..."`. Before running anything, open the script and update the paths near the top to match wherever you downloaded the data locally. This is the single most common cause of run-time failure.
+Every script at this top level points to absolute Windows paths like `r"C:\Users\benne\Downloads\..."`. Before running anything, open the script and update the paths near the top to match wherever you downloaded the data locally. This is the single most common cause of run-time failure.
 
 ---
 
@@ -78,15 +84,15 @@ Nevada was the proof-of-concept that the mathematical formulation actually works
 
 ---
 
-## Florida Scripts — What Didn't Scale
+## Florida Scripts — Main Implementation
 
-These scripts document the attempt to apply the Nevada approach directly to Florida and the realization that it wouldn't work at full state scale. They're kept in the repo for pedagogical value, not because you should run them and wait for results.
+The Florida scripts at this level are the direct port of the Nevada formulation to Florida. They share the same Hess + SHIR + efficiency-gap structure, run on VEST 2024 data redistributed through RDH, and estimate population with a turnout-times-voting-age-share heuristic (as opposed to proper census interpolation, which is what the advanced folder does).
 
-`florida_dataframe_generator.py` is the first-pass Florida data builder. It loads the VEST 2024 shapefile, creates vote columns, and estimates population by dividing total votes by a turnout-times-voting-age-share fudge factor: `population ≈ total_votes / (0.67 × 0.70)`. It then builds the precinct adjacency graph, stitches disconnected islands to the mainland by centroid distance, and pickles the result. This script was superseded by the advanced folder's `build_pop_precinct_data.py`, which replaces the turnout-based estimate with proper area-weighted census interpolation.
+`florida_dataframe_generator.py` is the main Florida data builder. It loads the VEST 2024 shapefile, creates vote columns, and estimates population as `total_votes / (0.67 × 0.70)` — i.e., assumes ~67% turnout among ~70% of the voting-age population. It then builds the precinct adjacency graph, stitches disconnected islands to the mainland by centroid distance, and pickles the result to disk.
 
 `original_optimization_feasibility_check.py` is a minimal feasibility probe. It strips the model down to just the assignment constraint and the population upper/lower bounds, sets the objective to zero, and asks Gurobi whether any plan exists that satisfies both. Useful as a quick check before adding expensive contiguity or political constraints.
 
-`florida_optimization_too_big_didn_t_work.py` is exactly what the filename says. It applies the full Hess + SHIR + efficiency-gap formulation from Nevada directly to Florida's ~5,800 precincts with 28 districts. The resulting model has roughly 34 million `x[i,j]` variables and a correspondingly enormous flow network, which is well beyond what Gurobi can solve in any reasonable time window. Running this on a laptop will either exhaust memory or time out without finding a feasible incumbent. The experience of watching it fail is what motivated the super-precinct aggregation approach in the advanced folder.
+`florida_optimization_too_big_didn_t_work.py` applies the full Hess + SHIR + efficiency-gap formulation to Florida's ~5,800 precincts with 28 districts. The filename is honest — the resulting model is too large for Gurobi to solve on typical hardware in a reasonable time window. It was the experience of running this and watching it fail that motivated the super-precinct aggregation approach in the advanced folder. The script is kept here both as documentation of the baseline and so anyone studying the scaling problem can reproduce the observation.
 
 ---
 
@@ -100,25 +106,21 @@ These scripts document the attempt to apply the Nevada approach directly to Flor
 
 ## The Advanced Pipeline
 
-The `FLORIDA-ADVANCED_GERRYMANDING/` subfolder contains the working Florida solution. It addresses the scaling failure documented above by:
+The `FLORIDA-ADVANCED-GERRYMANDERING/` subfolder contains a scaled-up version of the Florida analysis. It improves on the main implementation in three ways. It replaces the turnout-based population estimate with area-weighted interpolation from 2020 census block data, so population numbers reflect actual residents rather than a heuristic. It greedily aggregates the ~5,800 precincts into ~150 compactness- and politics-aware "super-precincts," which shrinks the MIP enough to be tractable. And it uses a column-generation formulation — building a large pool of candidate districts via randomized BFS with partisan biases, then solving a set-partitioning master IP over the pool — which scales to the full 28 districts where the direct MIP does not.
 
-1. Replacing the turnout-based population estimate with area-weighted interpolation from 2020 census block data.
-2. Greedily aggregating ~5,800 precincts into ~150 compactness- and politics-aware "super-precincts".
-3. Using a column-generation formulation that builds a large pool of candidate districts via randomized BFS with partisan biases, then solves a set-partitioning master IP over the pool.
-
-That folder has its own README covering data downloads (the census TIGER blocks and the VEST precinct shapefile), the execution order of its internal scripts, and the parameters you can tune. Read it if you want to actually produce a full 28-district Florida plan.
+That folder has its own README (`README_FLORIDA-REDISTRCTING-ADVANCED.md`, kept at the top level for visibility) covering the data sources in detail, the execution order of its internal scripts, and the parameters you can tune. Read it if you want to produce a full 28-district Florida plan rather than reproduce the main-implementation limits.
 
 ---
 
 ## Running Order
 
-This folder does not have a single linear pipeline — the scripts are independent explorations tied together by the common theme. Here's the sensible order for someone trying to understand the project from scratch:
+The scripts here are independent explorations tied together by a common theme, not a single linear pipeline. Here's the sensible order for someone trying to understand the project from scratch.
 
 First, work through the Nevada scripts to see the formulation working end-to-end. Run `nevada_subset_new_formulation_shown_in_presentation.py` with small subset settings to see a complete solve in seconds, then bump up to `nevada_new_formulation.py` for the full state.
 
-Next, look at the Florida attempts. Run `florida_dataframe_generator.py` to build the pickles, then `sanitychecker.py` to confirm they look correct, then `plotter.py` on any county to confirm adjacency is sensible. You can optionally kick off `original_optimization_feasibility_check.py` to confirm population balance is achievable, but skip `florida_optimization_too_big_didn_t_work.py` unless you want to witness the failure yourself.
+Next, look at the Florida main implementation. Run `florida_dataframe_generator.py` to build the pickles, then `sanitychecker.py` to confirm they look correct, then `plotter.py` on any county to confirm adjacency is sensible. You can optionally kick off `original_optimization_feasibility_check.py` to confirm population balance is achievable. Running `florida_optimization_too_big_didn_t_work.py` is optional — it will not finish on typical hardware, but it's worth kicking off briefly to see the model-build log if you're studying the scaling problem.
 
-Finally, move into `FLORIDA-ADVANCED_GERRYMANDING/` and follow the instructions in that folder's README for the working pipeline.
+Finally, move into `FLORIDA-ADVANCED-GERRYMANDERING/` and follow the instructions in that folder's README for the improved pipeline.
 
 ---
 
@@ -127,5 +129,6 @@ Finally, move into `FLORIDA-ADVANCED_GERRYMANDING/` and follow the instructions 
 If you reference this work, cite the underlying data sources:
 
 - U.S. Census Bureau. *2020 TIGER/Line Shapefiles: Tabulation Blocks.* Washington, DC: U.S. Department of Commerce. (Used in the advanced subfolder only.)
-- Voting and Election Science Team. 2025. *2024 Precinct-Level Election Results – Florida, V1.0.* UF Election Lab.
-- Voting and Election Science Team. 2021. *2020 Precinct-Level Election Results – Nevada.* Harvard Dataverse.
+- Voting and Election Science Team. 2025. *2024 Precinct-Level Election Results – Florida, V1.0.* UF Election Lab. (Advanced subfolder.)
+- Voting and Election Science Team. 2025. *2024 Precinct-Level Election Results – Florida, V1.0.* Redistributed via Redistricting Data Hub. (Top-level Florida scripts.)
+- Voting and Election Science Team. *2020 Precinct-Level Election Results – Nevada.* UF Election Lab Data Archive.
