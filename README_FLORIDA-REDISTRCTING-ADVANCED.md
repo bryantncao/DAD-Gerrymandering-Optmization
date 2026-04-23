@@ -45,7 +45,7 @@ Used for precinct boundaries and presidential vote counts.
 **Source:** Voting and Election Science Team (VEST), 2025, *2024 Precinct-Level Election Results – Florida, V1.0.*
 
 **Download:**
-- Harvard Dataverse VEST collection: [https://dataverse.harvard.edu/dataverse/electionscience](https://dataverse.harvard.edu/dataverse/electionscience)
+- Harvard Dataverse VEST collection: [https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/](https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/)
 - Or via UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/)
 
 Search the collection for "Florida 2024" and download the shapefile bundle. **Note:** VEST's 2022–2024 data is currently available to paid subscribers only. Their 2016–2020 data is free under CC BY-NC-ND 4.0, so if you don't have subscriber access, you can adapt the pipeline to 2020 data with minor column-name edits in `build_pop_precinct_data.py`.
