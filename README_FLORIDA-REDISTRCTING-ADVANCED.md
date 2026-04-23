@@ -45,10 +45,8 @@ Used for precinct boundaries and presidential vote counts.
 **Source:** Voting and Election Science Team (VEST), 2025, *2024 Precinct-Level Election Results – Florida, V1.0.*
 
 **Download:**
-- Harvard Dataverse VEST collection: [https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/](https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/)
-- Or via UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/)
+-  UF Election Lab:: [https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/](https://election.lab.ufl.edu/dataset/fl-2024-precinct-level-election-results/)
 
-Search the collection for "Florida 2024" and download the shapefile bundle. **Note:** VEST's 2022–2024 data is currently available to paid subscribers only. Their 2016–2020 data is free under CC BY-NC-ND 4.0, so if you don't have subscriber access, you can adapt the pipeline to 2020 data with minor column-name edits in `build_pop_precinct_data.py`.
 
 Unzip and place the core shapefile bundle in `data/`. The expected filename is `fl_2024.shp` (plus its sibling `.shx`, `.dbf`, `.prj`, `.cpg` files). If your download uses a different filename, update the path near the top of `build_pop_precinct_data.py`.
 
@@ -158,4 +156,4 @@ In `fl_column_generation_copy.py`, `N_PARTITIONS`, `PART_TIME_LIMIT`, `N_EXTRA`,
 If you reference this pipeline or its outputs in coursework, please cite the underlying data sources:
 
 - U.S. Census Bureau. *2020 TIGER/Line Shapefiles: Tabulation Blocks.* Washington, DC: U.S. Department of Commerce.
-- Voting and Election Science Team. 2025. *2024 Precinct-Level Election Results – Florida, V1.0.* Harvard Dataverse.
+- Voting and Election Science Team. 2025. *2024 Precinct-Level Election Results – Florida, V1.0.* UF Election Lab
