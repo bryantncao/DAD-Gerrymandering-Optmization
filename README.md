@@ -50,11 +50,15 @@ m = gp.Model("model_name", env=env)
 
 ### Nevada
 
-All Nevada scripts read from a VEST 2020 Nevada precinct shapefile (`nv_2020.shp`). VEST's 2016–2020 datasets are free under CC BY-NC-ND 4.0 and available from Harvard Dataverse: [https://dataverse.harvard.edu/dataverse/electionscience](https://dataverse.harvard.edu/dataverse/electionscience). Search for "Nevada 2020" and download the shapefile bundle.
+All Nevada scripts read from a VEST 2020 Nevada precinct shapefile (`nv_2020.shp`). VEST's 2016–2020 datasets are free under CC BY-NC-ND 4.0 and available from UF's election lab : [https://election.lab.ufl.edu/data-archive/](https://election.lab.ufl.edu/data-archive/) . Search for "Nevada 2020" and download the shapefile bundle.
 
-### Florida
+### Florida-ADVANCED-GERRYMANDERING
 
-The scripts in this top-level folder use the VEST 2024 Florida shapefile (`fl_2024_gen_all_prec.shp`), available through UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/). The advanced subfolder uses a cleaner version of the same data — see the subfolder's README for details.
+The scripts in the ADVANCED Gerrymandering folder use the VEST 2024 Florida shapefile (`fl_2024_gen_all_prec.shp`), available through UF Election Lab: [https://election.lab.ufl.edu/precinct-data/](https://election.lab.ufl.edu/precinct-data/). The advanced subfolder uses a cleaner version of the same data — see the subfolder's README for details.
+
+## Florida
+
+uses data from [https://redistrictingdatahub.org/](https://redistrictingdatahub.org/)
 
 ### Hardcoded paths
 
